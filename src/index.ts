@@ -116,6 +116,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "The original prompt that needs to be refined.",
             },
+            categoryFilter: {
+              type: "string",
+              description: "Optional category to filter memories (e.g., 'architecture', 'style').",
+            },
           },
           required: ["prompt"],
         },
@@ -153,14 +157,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const category = (args?.category as string) || "general";
     
     console.error(`Learning new context: ${info.substring(0, 50)}...`);
-    const vector = await getEmbedding(info);
     
-    const data = [{
-      vector,
-      text: info,
-      category,
-      timestamp: new Date().toISOString()
-    }];
+    // Semantic Chunking: split by double newlines or large blocks
+    const chunks = info.split(/\n\s*\n/).map(s => s.trim()).filter(s => s.length > 0);
+    const data = [];
+    
+    for (const chunk of chunks) {
+      const vector = await getEmbedding(chunk);
+      data.push({
+        vector,
+        text: chunk,
+        category,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     if (!table) {
       table = await db.createTable(TABLE_NAME, data);
@@ -169,12 +179,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     return {
-      content: [{ type: "text", text: `Learned and stored in semantic memory: "${info}"` }],
+      content: [{ type: "text", text: `Learned and stored ${chunks.length} chunks in semantic memory.` }],
     };
   }
 
   if (name === "refine_prompt") {
     const prompt = args?.prompt as string;
+    const categoryFilter = args?.categoryFilter as string;
     let contextExtra = "";
 
     console.error(`Refining prompt: ${prompt.substring(0, 50)}...`);
@@ -183,11 +194,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (table) {
       try {
         const queryVector = await getEmbedding(prompt);
-        const results = await table.vectorSearch(queryVector).limit(3).toArray();
+        let query = table.vectorSearch(queryVector);
+        
+        if (categoryFilter) {
+          query = query.filter(`category = '${categoryFilter}'`);
+        }
+        
+        const results = await query.limit(2).toArray();
         
         if (results.length > 0) {
-          contextExtra = "\n[Context Retrieved from Memory]:\n" + 
-            results.map((r: any) => `- ${r.text}`).join("\n");
+          contextExtra = "\n<semantic_memory>\n" + 
+            results.map((r: any) => `<context_item category="${r.category}">\n${r.text}\n</context_item>`).join("\n") +
+            "\n</semantic_memory>";
           console.error(`Retrieved ${results.length} relevant memories.`);
         }
       } catch (error) {
@@ -200,7 +218,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: `[Refined Prompt]: ${prompt}\n${contextExtra}\n\n(Antigravity can now use the information above to generate a more precise response)`,
+          text: `${prompt}\n${contextExtra}`,
         },
       ],
     };

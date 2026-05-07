@@ -8,7 +8,7 @@ The main goal of this MCP is to save tokens in complex Antigravity tasks by allo
 
 - **Prompt Refinement**: Transforms vague prompts into detailed and technical instructions.
 - **Development Support**: Assists in bug fixing and implementing new features with a focus on efficiency.
-- **Semantic Memory**: Stores and retrieves technical context to enrich prompts.
+- **Semantic Memory**: Stores and retrieves technical context using **Semantic Chunking**, **Category Filtering**, and **XML Formatting** to maximize LLM precision and minimize token usage.
 
 ## Prerequisites
 
@@ -149,10 +149,11 @@ The OpenCode MCP provides the following tools:
 
 ### 1. `refine_prompt`
 
-Refines a development prompt to make it clearer and more efficient.
+Refines a development prompt to make it clearer and more efficient, injecting targeted context via XML tags.
 
 - **Arguments:**
   - `prompt`: (string) The original prompt that needs refinement.
+  - `categoryFilter`: (string, optional) Optional category to filter memories (e.g., 'architecture', 'style') to increase precision and reduce token usage.
 
 ### 2. `learn_context`
 
@@ -207,6 +208,12 @@ A technical analysis was performed to measure the efficiency of semantic retriev
 
 **Why is it more efficient?**
 OpenCode MCP implements a local **RAG (Retrieval-Augmented Generation)** architecture. Instead of sending 100% of your documentation or source files, it uses vector embeddings to identify and inject only the **Top relevant snippets**, drastically reducing the input token count for the main model.
+
+### Advanced Optimizations
+To maximize efficiency, the server actively implements:
+1. **Semantic Chunking**: Large knowledge blocks are automatically split into smaller, focused chunks before being embedded. This ensures only the exact relevant paragraph is retrieved.
+2. **Category Filtering**: Queries can be scoped to specific categories (e.g., `architecture` or `style`), significantly reducing noise and allowing the result limit to be tightened.
+3. **XML Context Formatting**: Retrieved memories are injected into the prompt using strict XML tags (`<semantic_memory>` and `<context_item>`). This aligns with how modern LLMs best parse context, eliminating attention dilution.
 
 ## Benefits of OpenCode MCP
 
