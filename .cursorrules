@@ -1,0 +1,5 @@
+# Antigravity Global Rules
+
+1. **Prompt Refinement**: Whenever the user sends a request, first use `opencode:refine_prompt`.
+2. **Context Enrichment**: Upon receiving the refined prompt, validate if there are technical terms that require additional lookup in semantic memory.
+3. **Continuous Learning**: After successfully implementing a complex feature or a non-obvious bug fix, use `opencode:learn_context` to persist technical knowledge.
