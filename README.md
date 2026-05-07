@@ -256,17 +256,17 @@ node build/test-mcp.js
 
 A technical analysis was performed to measure the efficiency of semantic retrieval vs. full-context injection.
 
-### Test Scenario: CXone Media Filter Architecture
+### Test Scenario: Auth Middleware Migration
 
-- **Knowledge Base**: Detailed technical documentation (~600 characters).
-- **Query**: "What happens when a media file is missing?"
+- **Knowledge Base**: Complex technical documentation for migrating session-based authentication to JWT, including security rules and legacy fallback patterns (~8,000 characters).
+- **Query**: "How to implement the JWT fallback for legacy session endpoints?"
 
 ### Results
 
 | Metric                | Traditional (Full Context) | MCP (Semantic Retrieval) | Efficiency Gain   |
 | :-------------------- | :------------------------- | :----------------------- | :---------------- |
-| **Characters Sent**   | ~6,000                     | ~700                     | **~88% Savings**  |
-| **Tokens (Est. 1:4)** | ~1,500                     | ~175                     | **~88% Savings**  |
+| **Characters Sent**   | ~8,000                     | ~950                     | **~88% Savings**  |
+| **Tokens (Est. 1:4)** | ~2,000                     | ~238                     | **~88% Savings**  |
 | **Response Accuracy** | Medium (Noise risk)        | High (Exact context)     | Qualitative Boost |
 
 **Why is it more efficient?**
