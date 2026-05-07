@@ -203,6 +203,9 @@ To ensure Antigravity uses this MCP correctly, configure the following rules in 
 2. **Context Enrichment**: Upon receiving the refined prompt, validate if there are technical terms or project patterns that require additional lookup in semantic memory. Mention if you are pulling specific context from OpenCode memory.
 3. **Continuous Learning**: After successfully implementing a complex feature, use `opencode:learn_context`. Briefly inform the user that this knowledge is being persisted in OpenCode's semantic memory.
 
+> [!TIP]
+> You can find the raw version of these rules in the [.cursorrules](.cursorrules) file for easy copying into your System Prompt.
+
 ## Available Tools
 
 The OpenCode MCP provides the following tools:
