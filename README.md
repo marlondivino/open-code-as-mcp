@@ -62,7 +62,7 @@ sequenceDiagram
 
 The solution is built using a modern and efficient stack designed for high performance and local privacy:
 
-- **[OpenCode](https://github.com/marlondivino/open-code-as-mcp)**: The core orchestration engine that manages tool execution, prompt refinement logic, and semantic memory integration.
+- **[OpenCode](https://opencode.ai/)**: The core orchestration engine that manages tool execution, prompt refinement logic, and semantic memory integration.
 - **[Model Context Protocol (MCP)](https://modelcontextprotocol.io/)**: The standard protocol for connecting AI models to local/remote data and tools.
 - **[LanceDB](https://lancedb.com/)**: A serverless, high-performance vector database that allows for incredibly fast semantic searches without the overhead of a traditional database server.
 - **[Ollama](https://ollama.com/)**: Orchestrates local AI models. We use `nomic-embed-text` to generate high-quality vector embeddings locally, ensuring your technical data never leaves your machine.
