@@ -10,6 +10,65 @@ The main goal of this MCP is to save tokens in complex Antigravity tasks by allo
 - **Development Support**: Assists in bug fixing and implementing new features with a focus on efficiency.
 - **Semantic Memory**: Stores and retrieves technical context using **Semantic Chunking**, **Category Filtering**, and **XML Formatting** to maximize LLM precision and minimize token usage.
 
+## Architecture
+
+The OpenCode MCP Server acts as an orchestration layer between the AI Client and local specialized tools.
+
+```mermaid
+graph TD
+    Client[AI Client (Antigravity/Claude)] -- "MCP Protocol (Stdio/HTTP)" --> Server[OpenCode MCP Server]
+
+    subgraph "OpenCode Engine"
+        Server --> Tools[Tools: refine_prompt / learn_context]
+        Tools --> Memory[Memory Manager]
+    end
+
+    subgraph "Local Infrastructure"
+        Memory -- "Store/Search" --> LDB[(LanceDB Vector Store)]
+        Memory -- "Generate Embeddings" --> OLL[Ollama: nomic-embed-text]
+    end
+
+    Server -- "Refined Prompt + Context" --> Client
+```
+
+### The Process Flow
+
+```mermaid
+sequenceDiagram
+    participant User as User / Developer
+    participant AG as AI Client (Antigravity)
+    participant OC as OpenCode MCP Server
+    participant LDB as LanceDB (Memory)
+    participant OLL as Ollama (Embeddings)
+
+    User->>AG: "How do I fix the auth bug?"
+    Note over AG: Rule 1: Refine Prompt
+    AG->>OC: refine_prompt("How do I fix the auth bug?")
+
+    OC->>OLL: Generate embedding for query
+    OLL-->>OC: Vector representation
+
+    OC->>LDB: Vector search for top-relevant context
+    LDB-->>OC: Snippets: "Auth uses JWT", "Secret in .env"
+
+    Note over OC: Format results as XML
+    OC-->>AG: "How do fix... + <semantic_memory>Snippets...</semantic_memory>"
+
+    Note over AG: Generate high-precision answer
+    AG->>User: Technical solution with codebase context
+```
+
+## Technology Stack
+
+The solution is built using a modern and efficient stack designed for high performance and local privacy:
+
+- **[OpenCode](https://github.com/marlondivino/open-code-as-mcp)**: The core orchestration engine that manages tool execution, prompt refinement logic, and semantic memory integration.
+- **[Model Context Protocol (MCP)](https://modelcontextprotocol.io/)**: The standard protocol for connecting AI models to local/remote data and tools.
+- **[LanceDB](https://lancedb.com/)**: A serverless, high-performance vector database that allows for incredibly fast semantic searches without the overhead of a traditional database server.
+- **[Ollama](https://ollama.com/)**: Orchestrates local AI models. We use `nomic-embed-text` to generate high-quality vector embeddings locally, ensuring your technical data never leaves your machine.
+- **[TypeScript](https://www.typescriptlang.org/) & [Node.js](https://nodejs.org/)**: Provides a type-safe and performant runtime environment for the server logic.
+- **[Express](https://expressjs.com/)**: Used for the Remote Mode (HTTP/SSE), providing a robust foundation for the Streamable HTTP transport.
+
 ## Prerequisites
 
 Before starting, you need to set up the development environment. We recommend using **NVM (Node Version Manager)** to manage Node.js versions on Windows.
@@ -139,9 +198,9 @@ To ensure Antigravity uses this MCP correctly, configure the following rules in 
 
 # Antigravity Global Rules
 
-1. **Prompt Refinement**: Whenever the user sends a request, first use `opencode:refine_prompt`.
-2. **Context Enrichment**: Upon receiving the refined prompt, validate if there are technical terms that require additional lookup in semantic memory.
-3. **Continuous Learning**: After successfully implementing a complex feature or a non-obvious bug fix, use `opencode:learn_context` to persist technical knowledge.
+1. **Prompt Refinement**: Whenever the user sends a request, first use `opencode:refine_prompt`. This ensures the instructions are technically precise before execution.
+2. **Context Enrichment**: Upon receiving the refined prompt, validate if there are technical terms or project patterns that require additional lookup in semantic memory to avoid "hallucinations" about the codebase architecture.
+3. **Continuous Learning**: After successfully implementing a complex feature, resolving a non-obvious bug, or establishing a new pattern, use `opencode:learn_context` to persist this knowledge for future tasks.
 
 ## Available Tools
 
@@ -210,7 +269,9 @@ A technical analysis was performed to measure the efficiency of semantic retriev
 OpenCode MCP implements a local **RAG (Retrieval-Augmented Generation)** architecture. Instead of sending 100% of your documentation or source files, it uses vector embeddings to identify and inject only the **Top relevant snippets**, drastically reducing the input token count for the main model.
 
 ### Advanced Optimizations
+
 To maximize efficiency, the server actively implements:
+
 1. **Semantic Chunking**: Large knowledge blocks are automatically split into smaller, focused chunks before being embedded. This ensures only the exact relevant paragraph is retrieved.
 2. **Category Filtering**: Queries can be scoped to specific categories (e.g., `architecture` or `style`), significantly reducing noise and allowing the result limit to be tightened.
 3. **XML Context Formatting**: Retrieved memories are injected into the prompt using strict XML tags (`<semantic_memory>` and `<context_item>`). This aligns with how modern LLMs best parse context, eliminating attention dilution.
