@@ -42,7 +42,8 @@ sequenceDiagram
     participant OLL as Ollama (Embeddings)
 
     User->>AG: "How do I fix the auth bug?"
-    Note over AG: Rule 1: Refine Prompt
+    Note over AG: Rule 1: Notify User & Refine
+    AG->>User: "Refining with OpenCode for precision..."
     AG->>OC: refine_prompt("How do I fix the auth bug?")
 
     OC->>OLL: Generate embedding for query
@@ -198,9 +199,9 @@ To ensure Antigravity uses this MCP correctly, configure the following rules in 
 
 # Antigravity Global Rules
 
-1. **Prompt Refinement**: Whenever the user sends a request, first use `opencode:refine_prompt`. This ensures the instructions are technically precise before execution.
-2. **Context Enrichment**: Upon receiving the refined prompt, validate if there are technical terms or project patterns that require additional lookup in semantic memory to avoid "hallucinations" about the codebase architecture.
-3. **Continuous Learning**: After successfully implementing a complex feature, resolving a non-obvious bug, or establishing a new pattern, use `opencode:learn_context` to persist this knowledge for future tasks.
+1. **Prompt Refinement**: Whenever the user sends a request, first announce to the user: *"Refining your request with OpenCode for technical precision..."*, then use `opencode:refine_prompt`.
+2. **Context Enrichment**: Upon receiving the refined prompt, validate if there are technical terms or project patterns that require additional lookup in semantic memory. Mention if you are pulling specific context from OpenCode memory.
+3. **Continuous Learning**: After successfully implementing a complex feature, use `opencode:learn_context`. Briefly inform the user that this knowledge is being persisted in OpenCode's semantic memory.
 
 ## Available Tools
 
