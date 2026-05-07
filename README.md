@@ -16,16 +16,16 @@ The OpenCode MCP Server acts as an orchestration layer between the AI Client and
 
 ```mermaid
 graph TD
-    Client[AI Client (Antigravity/Claude)] -- "MCP Protocol (Stdio/HTTP)" --> Server[OpenCode MCP Server]
+    Client["AI Client (Antigravity/Claude)"] -- "MCP Protocol (Stdio/HTTP)" --> Server["OpenCode MCP Server"]
 
     subgraph "OpenCode Engine"
-        Server --> Tools[Tools: refine_prompt / learn_context]
-        Tools --> Memory[Memory Manager]
+        Server --> Tools["Tools: refine_prompt / learn_context"]
+        Tools --> Memory["Memory Manager"]
     end
 
     subgraph "Local Infrastructure"
-        Memory -- "Store/Search" --> LDB[(LanceDB Vector Store)]
-        Memory -- "Generate Embeddings" --> OLL[Ollama: nomic-embed-text]
+        Memory -- "Store/Search" --> LDB[("LanceDB Vector Store")]
+        Memory -- "Generate Embeddings" --> OLL["Ollama: nomic-embed-text"]
     end
 
     Server -- "Refined Prompt + Context" --> Client
