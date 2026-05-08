@@ -1,4 +1,8 @@
-# 🚀 OpenCode MCP: High-Precision AI Orchestrator & Token Optimizer
+<div align="center">
+  <img src="assets/logo.svg" width="200" alt="Codey, the OpenCode MCP Mascot">
+  <h1>🚀 OpenCode MCP: High-Precision AI Orchestrator & Token Optimizer</h1>
+</div>
+
 
 [![Powered by OpenCode](https://img.shields.io/badge/Powered%20by-OpenCode-blueviolet?style=for-the-badge)](https://opencode.ai/)
 [![Protocol MCP](https://img.shields.io/badge/Protocol-MCP-blue?style=for-the-badge)](https://modelcontextprotocol.io/)
