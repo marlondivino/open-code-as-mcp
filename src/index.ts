@@ -27,6 +27,7 @@ const DB_PATH = getDbPath();
 const TABLE_NAME = "memories";
 const EMBEDDING_MODEL = "nomic-embed-text";
 
+
 /**
  * Ensures that the base directory for a given path exists.
  * @param p - The file path to check.
@@ -108,7 +109,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "refine_prompt",
-        description: "Refines a prompt using semantic memory to make it more contextual and efficient.",
+        description: "Refines a prompt using local semantic memory, a local AI model for rewriting, and real-time external documentation (Context7) to make it more contextual and efficient.",
         inputSchema: {
           type: "object",
           properties: {
@@ -219,16 +220,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   if (name === "refine_prompt") {
-    const prompt = args?.prompt as string;
+    const originalPrompt = args?.prompt as string;
     const categoryFilter = args?.categoryFilter as string;
     let contextExtra = "";
 
-    console.error(`Refining prompt: ${prompt.substring(0, 50)}...`);
+    console.error(`Refining prompt locally via Ollama: ${originalPrompt.substring(0, 50)}...`);
 
-    // Try to search for relevant memories
+    let refinedPrompt = originalPrompt;
+    let inferredTechnologies: string[] = [];
+
+    // Step 1: Use local Ollama (opencode.ai) to refine the prompt and extract technologies
+    try {
+      const inferenceModel = process.env.MCP_INFERENCE_MODEL || 'llama3';
+      const ollamaResponse = await ollama.generate({
+        model: inferenceModel,
+        prompt: `You are an expert software architect. Your task is to rewrite the following vague user prompt into a clear, highly detailed, and technical prompt. Also, identify any programming languages, frameworks, or libraries relevant to the prompt.
+Return your response strictly in JSON format with the following keys:
+"refinedPrompt": The rewritten, detailed prompt.
+"technologies": An array of strings with the extracted technologies.
+
+User Prompt: "${originalPrompt}"`,
+        stream: false,
+        format: "json"
+      });
+      
+      const parsed = JSON.parse(ollamaResponse.response);
+      if (parsed.refinedPrompt) refinedPrompt = parsed.refinedPrompt;
+      if (parsed.technologies && Array.isArray(parsed.technologies)) {
+        inferredTechnologies = parsed.technologies.map((t: string) => t.trim().toLowerCase());
+      }
+      console.error(`Local AI Refinement Success. Inferred Tech: ${inferredTechnologies.join(", ")}`);
+    } catch (error: any) {
+      console.error(`Local AI Refinement failed (Model: ${process.env.MCP_INFERENCE_MODEL || 'llama3'}). Error: ${error.message}`);
+      if (error.message.includes("not found")) {
+        console.error(`HINT: Run 'ollama pull ${process.env.MCP_INFERENCE_MODEL || 'llama3'}' to enable local refinement.`);
+      }
+    }
+
+    // Step 2: Try to search for relevant local memories
     if (table) {
       try {
-        const queryVector = await getEmbedding(prompt);
+        const queryVector = await getEmbedding(refinedPrompt);
         let query = table.vectorSearch(queryVector);
         
         if (categoryFilter) {
@@ -238,22 +270,93 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const results = await query.limit(2).toArray();
         
         if (results.length > 0) {
-          contextExtra = "\n<semantic_memory>\n" + 
+          contextExtra += "\n<semantic_memory>\n" + 
             results.map((r: any) => `<context_item category="${r.category}">\n${r.text}\n</context_item>`).join("\n") +
             "\n</semantic_memory>";
-          console.error(`Retrieved ${results.length} relevant memories.`);
+          console.error(`Retrieved ${results.length} relevant local memories.`);
         }
       } catch (error) {
         console.error("Error searching semantic memory:", error);
-        contextExtra = "\n[Warning]: Could not retrieve memories at this time.";
+        contextExtra += "\n[Warning]: Could not retrieve memories at this time.";
       }
     }
 
+    // Step 3: Context7 Documentation Integration
+    if (process.env.ENABLE_CONTEXT7 !== "false" && inferredTechnologies.length > 0) {
+      console.error(`Context7: Fetching docs for ${inferredTechnologies.join(", ")}`);
+      let allDocs = "";
+      for (const lib of inferredTechnologies) {
+        
+        const callMCP = async (method: string, callArgs: any) => {
+          const response = await fetch("https://mcp.context7.com/mcp", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json, text/event-stream",
+              ...(process.env.CONTEXT7_API_KEY ? { "CONTEXT7_API_KEY": process.env.CONTEXT7_API_KEY } : {})
+            },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: Math.floor(Math.random() * 1000),
+              method: "tools/call",
+              params: { name: method, arguments: callArgs }
+            })
+          });
+
+          if (!response.ok) return null;
+
+          const contentType = response.headers.get("content-type");
+          if (contentType?.includes("text/event-stream")) {
+            const reader = response.body?.getReader();
+            if (!reader) return null;
+            let result = null;
+            const decoder = new TextDecoder();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value);
+              for (const line of chunk.split("\n")) {
+                if (line.startsWith("data: ")) {
+                  try {
+                    const data = JSON.parse(line.substring(6));
+                    if (data.result) { result = data; break; }
+                  } catch (e) {}
+                }
+              }
+              if (result) break;
+            }
+            return result;
+          } else {
+            return await response.json();
+          }
+        };
+
+        const resolveData: any = await callMCP("resolve-library-id", { libraryName: lib, query: refinedPrompt });
+        const resolveText = resolveData?.result?.content?.[0]?.text || "";
+        const idMatch = resolveText.match(/library ID: (\/[^\s\n]+)/);
+        const libraryId = idMatch ? idMatch[1] : null;
+
+        if (libraryId) {
+          const queryData: any = await callMCP("query-docs", { libraryId, query: refinedPrompt });
+          const docs = queryData?.result?.content?.[0]?.text;
+          if (docs && !docs.includes("MCP error")) {
+            allDocs += `\n--- [Docs for ${lib}] ---\n${docs}\n`;
+          }
+        }
+      }
+      
+      if (allDocs) {
+        contextExtra += "\n<external_documentation>\n" + allDocs + "\n</external_documentation>";
+        console.error("Injected external documentation from Context7.");
+      }
+    }
+
+    // Step 4: Return the SUPER PROMPT to Antigravity
     return {
       content: [
         {
           type: "text",
-          text: `${prompt}\n${contextExtra}`,
+          text: `${refinedPrompt}\n${contextExtra}`,
         },
       ],
     };
