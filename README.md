@@ -1,6 +1,9 @@
-# OpenCode MCP Server for Antigravity
+# 🚀 OpenCode MCP Server for Antigravity
 
-This repository contains the **OpenCode MCP Server**, a server based on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) designed to act as a right-hand assistant for **Antigravity** in development and software architecture tasks.
+[![Powered by OpenCode](https://img.shields.io/badge/Powered%20by-OpenCode-blueviolet?style=for-the-badge)](https://opencode.ai/)
+[![Protocol MCP](https://img.shields.io/badge/Protocol-MCP-blue?style=for-the-badge)](https://modelcontextprotocol.io/)
+
+This repository contains the **OpenCode MCP Server**, a high-performance orchestration layer based on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). It is designed to act as a **Proactive Architectural Assistant** for Antigravity, transforming how AI interacts with your codebase.
 
 The main goal of this MCP is to save tokens in complex Antigravity tasks by allowing OpenCode to refine prompts and perform preliminary analysis before sending the final instructions to the main model.
 
@@ -8,7 +11,9 @@ The main goal of this MCP is to save tokens in complex Antigravity tasks by allo
 
 - **Prompt Refinement**: Transforms vague prompts into detailed and technical instructions.
 - **Development Support**: Assists in bug fixing and implementing new features with a focus on efficiency.
-- **Semantic Memory**: Stores and retrieves technical context using **Semantic Chunking**, **Category Filtering**, and **XML Formatting** to maximize LLM precision and minimize token usage.
+- **Semantic Memory**: Stores and retrieves technical context using **Semantic Chunking**, **Category Filtering**, and **XML Formatting**.
+- **Proactive Indexing**: Automatically maps your project structure to memory for instant architectural awareness.
+- **Memory Dashboard**: Visualize your knowledge distribution and memory health.
 
 ## Architecture
 
@@ -240,6 +245,30 @@ Memorizes important information (preference, technical rule, context) for future
 - **Arguments:**
   - `information`: (string) The information to be remembered.
   - `category`: (string, optional) Information category (e.g., 'preference', 'architecture', 'style').
+
+### 3. `search_memory`
+
+Directly queries the semantic memory without refining a prompt.
+
+- **Arguments:**
+  - `query`: (string) The search query.
+  - `category`: (string, optional) Filter results by category.
+  - `limit`: (number, optional) Number of results to return.
+
+### 4. `index_codebase`
+
+Performs a recursive scan of the project to build a structural map in memory.
+
+- **Arguments:**
+  - `path`: (string, optional) Root path to scan.
+
+## 📊 Semantic Dashboard
+
+You can visualize your memory health and stats using the local dashboard:
+
+```powershell
+node dashboard.cjs
+```
 
 ## Remote Access (SSE)
 

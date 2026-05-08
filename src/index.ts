@@ -142,6 +142,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["information"],
         },
       },
+      {
+        name: "search_memory",
+        description: "Searches the semantic memory for specific information without refining a prompt.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "The search query.",
+            },
+            category: {
+              type: "string",
+              description: "Optional category to filter search.",
+            },
+            limit: {
+              type: "number",
+              description: "Number of results to return (default: 5).",
+            },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "index_codebase",
+        description: "Performs a deep scan of the project structure and key files to populate semantic memory.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "The root path to index (defaults to current directory).",
+            },
+          },
+        },
+      },
     ],
   };
 });
@@ -221,6 +256,68 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           text: `${prompt}\n${contextExtra}`,
         },
       ],
+    };
+  }
+
+  if (name === "search_memory") {
+    const queryStr = args?.query as string;
+    const category = args?.category as string;
+    const limit = (args?.limit as number) || 5;
+
+    if (!table) return { content: [{ type: "text", text: "Memory is currently empty." }] };
+
+    const queryVector = await getEmbedding(queryStr);
+    let query = table.vectorSearch(queryVector);
+    if (category) query = query.filter(`category = '${category}'`);
+    
+    const results = await query.limit(limit).toArray();
+    
+    const response = results.map((r: any) => `[${r.category}] ${r.text}`).join("\n---\n");
+    return {
+      content: [{ type: "text", text: response || "No relevant memories found." }],
+    };
+  }
+
+  if (name === "index_codebase") {
+    const rootPath = (args?.path as string) || process.cwd();
+    console.error(`Starting codebase indexing at: ${rootPath}`);
+    
+    // Recursive file listing helper
+    const getFiles = (dir: string, allFiles: string[] = []) => {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        if (file === "node_modules" || file === ".git" || file === ".data" || file === "dist" || file === "build") continue;
+        const name = path.join(dir, file);
+        if (fs.statSync(name).isDirectory()) {
+          getFiles(name, allFiles);
+        } else {
+          allFiles.push(name);
+        }
+      }
+      return allFiles;
+    };
+
+    const files = getFiles(rootPath);
+    const structureSummary = `Project Structure at ${rootPath}:\n` + 
+      files.map(f => path.relative(rootPath, f)).join("\n");
+
+    // Learn the structure
+    const queryVector = await getEmbedding(structureSummary);
+    const data = [{
+      vector: queryVector,
+      text: structureSummary,
+      category: "architecture",
+      timestamp: new Date().toISOString()
+    }];
+
+    if (!table) {
+      table = await db.createTable(TABLE_NAME, data);
+    } else {
+      await table.add(data);
+    }
+
+    return {
+      content: [{ type: "text", text: `Indexed ${files.length} files. Project structure has been mapped to semantic memory.` }],
     };
   }
 
