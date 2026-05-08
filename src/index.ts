@@ -27,6 +27,12 @@ const DB_PATH = getDbPath();
 const TABLE_NAME = "memories";
 const EMBEDDING_MODEL = "nomic-embed-text";
 
+// Dynamic Configuration State
+let dynamicConfig = {
+  enableContext7: process.env.ENABLE_CONTEXT7 !== "false",
+  context7ApiKey: process.env.CONTEXT7_API_KEY || ""
+};
+
 
 /**
  * Ensures that the base directory for a given path exists.
@@ -178,6 +184,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
+      {
+        name: "configure_context7",
+        description: "Configures the Context7 integration dynamically. Allows enabling/disabling real-time documentation retrieval and setting the API key directly via Antigravity.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            enable: {
+              type: "boolean",
+              description: "Set to true to enable Context7, false to disable.",
+            },
+            apiKey: {
+              type: "string",
+              description: "Optional. The Context7 API Key.",
+            },
+          },
+          required: ["enable"],
+        },
+      },
     ],
   };
 });
@@ -216,6 +240,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     return {
       content: [{ type: "text", text: `Learned and stored ${chunks.length} chunks in semantic memory.` }],
+    };
+  }
+
+  if (name === "configure_context7") {
+    const enable = args?.enable as boolean;
+    const apiKey = args?.apiKey as string;
+
+    dynamicConfig.enableContext7 = enable;
+    if (apiKey) {
+      dynamicConfig.context7ApiKey = apiKey;
+    }
+
+    const statusMsg = `Context7 configuration updated successfully.\nStatus: ${enable ? 'ENABLED' : 'DISABLED'}\nAPI Key: ${dynamicConfig.context7ApiKey ? 'Set' : 'Not Set'}`;
+    console.error(statusMsg);
+
+    return {
+      content: [{ type: "text", text: statusMsg }],
     };
   }
 
@@ -282,7 +323,7 @@ User Prompt: "${originalPrompt}"`,
     }
 
     // Step 3: Context7 Documentation Integration
-    if (process.env.ENABLE_CONTEXT7 !== "false" && inferredTechnologies.length > 0) {
+    if (dynamicConfig.enableContext7 && inferredTechnologies.length > 0) {
       console.error(`Context7: Fetching docs for ${inferredTechnologies.join(", ")}`);
       let allDocs = "";
       for (const lib of inferredTechnologies) {
@@ -293,7 +334,7 @@ User Prompt: "${originalPrompt}"`,
             headers: {
               "Content-Type": "application/json",
               "Accept": "application/json, text/event-stream",
-              ...(process.env.CONTEXT7_API_KEY ? { "CONTEXT7_API_KEY": process.env.CONTEXT7_API_KEY } : {})
+              ...(dynamicConfig.context7ApiKey ? { "CONTEXT7_API_KEY": dynamicConfig.context7ApiKey } : {})
             },
             body: JSON.stringify({
               jsonrpc: "2.0",
