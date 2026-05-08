@@ -193,7 +193,22 @@ Use this option if the server is running remotely. The server uses the modern **
 
 _Note: The server also maintains backward compatibility for legacy clients at `http://your-remote-server:3000/sse`._
 
-## Automatic Usage in Antigravity
+## Automatic Usage and Global Rules
+
+To ensure Antigravity consistently follows best practices, the **Global Rules** are stored in two key locations:
+
+1.  **Global Level (Windows)**: Inside the `GEMINI.md` file, located in your user profile: `%USERPROFILE%\.gemini\GEMINI.md` (a copy is available in this repo as [GEMINI.md](GEMINI.md)).
+2.  **Project Level**: Inside the `.cursorrules` file in the root of this repository.
+
+### Access via Environment Variable
+
+You can reference the global rules path by setting an environment variable in your terminal or system configuration:
+
+```powershell
+$env:ANTIGRAVITY_RULES_PATH = "$HOME\.gemini\GEMINI.md"
+```
+
+### The Rules
 
 To ensure Antigravity uses this MCP correctly, configure the following rules in your **System Prompt**:
 
@@ -204,7 +219,7 @@ To ensure Antigravity uses this MCP correctly, configure the following rules in 
 3. **Continuous Learning**: After successfully implementing a complex feature, use `opencode:learn_context`. Briefly inform the user that this knowledge is being persisted in OpenCode's semantic memory.
 
 > [!TIP]
-> You can find the raw version of these rules in the [.cursorrules](.cursorrules) file for easy copying into your System Prompt.
+> You can find the raw version of these rules in the [.cursorrules](.cursorrules) or [GEMINI.md](GEMINI.md) file for easy copying into your System Prompt.
 
 ## Available Tools
 
