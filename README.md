@@ -1,4 +1,4 @@
-# 🚀 OpenCode MCP Server for Antigravity
+# 🚀 OpenCode MCP: High-Precision AI Orchestrator & Token Optimizer
 
 [![Powered by OpenCode](https://img.shields.io/badge/Powered%20by-OpenCode-blueviolet?style=for-the-badge)](https://opencode.ai/)
 [![Protocol MCP](https://img.shields.io/badge/Protocol-MCP-blue?style=for-the-badge)](https://modelcontextprotocol.io/)
