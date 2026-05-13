@@ -12,6 +12,31 @@ import path from "path";
 import fs from "fs";
 
 /**
+ * Global Error Handling to prevent EOF crashes
+ */
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('SIGINT', () => {
+  console.error('Received SIGINT. Shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.error('Received SIGTERM. Shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('exit', (code) => {
+  console.error(`Process exiting with code: ${code}`);
+});
+
+/**
  * Memory Configuration and Constants
  */
 const getDbPath = () => {
@@ -64,6 +89,14 @@ async function initDB() {
       console.error(`Table "${TABLE_NAME}" loaded successfully.`);
     } catch {
       console.error("Memory table not found, it will be created on the first learning task.");
+    }
+
+    // Health check Ollama
+    try {
+      await ollama.list();
+      console.error("Ollama connection verified.");
+    } catch (err: any) {
+      console.error("WARNING: Ollama is not reachable. Semantic features will fail.", err.message);
     }
   } catch (error) {
     console.error("Error initializing the database:", error);
@@ -325,12 +358,15 @@ User Prompt: "${originalPrompt}"`,
     // Step 3: Context7 Documentation Integration
     if (dynamicConfig.enableContext7 && inferredTechnologies.length > 0) {
       console.error(`Context7: Fetching docs for ${inferredTechnologies.join(", ")}`);
-      let allDocs = "";
-      for (const lib of inferredTechnologies) {
-        
-        const callMCP = async (method: string, callArgs: any) => {
+      
+      const callMCP = async (method: string, callArgs: any) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout per call
+
+        try {
           const response = await fetch("https://mcp.context7.com/mcp", {
             method: "POST",
+            signal: controller.signal,
             headers: {
               "Content-Type": "application/json",
               "Accept": "application/json, text/event-stream",
@@ -344,47 +380,84 @@ User Prompt: "${originalPrompt}"`,
             })
           });
 
-          if (!response.ok) return null;
+          if (!response.ok) {
+            console.error(`Context7 API error: ${response.status} ${response.statusText}`);
+            return null;
+          }
 
           const contentType = response.headers.get("content-type");
           if (contentType?.includes("text/event-stream")) {
             const reader = response.body?.getReader();
             if (!reader) return null;
+            
             let result = null;
             const decoder = new TextDecoder();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const chunk = decoder.decode(value);
-              for (const line of chunk.split("\n")) {
-                if (line.startsWith("data: ")) {
-                  try {
-                    const data = JSON.parse(line.substring(6));
-                    if (data.result) { result = data; break; }
-                  } catch (e) {}
+            
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                for (const line of chunk.split("\n")) {
+                  if (line.startsWith("data: ")) {
+                    try {
+                      const rawData = line.substring(6).trim();
+                      if (!rawData) continue;
+                      const data = JSON.parse(rawData);
+                      if (data.result) { result = data; break; }
+                    } catch (e) {
+                      // Silently skip malformed JSON chunks in SSE
+                    }
+                  }
                 }
+                if (result) break;
               }
-              if (result) break;
+            } finally {
+              reader.releaseLock();
             }
             return result;
           } else {
             return await response.json();
           }
-        };
-
-        const resolveData: any = await callMCP("resolve-library-id", { libraryName: lib, query: refinedPrompt });
-        const resolveText = resolveData?.result?.content?.[0]?.text || "";
-        const idMatch = resolveText.match(/library ID: (\/[^\s\n]+)/);
-        const libraryId = idMatch ? idMatch[1] : null;
-
-        if (libraryId) {
-          const queryData: any = await callMCP("query-docs", { libraryId, query: refinedPrompt });
-          const docs = queryData?.result?.content?.[0]?.text;
-          if (docs && !docs.includes("MCP error")) {
-            allDocs += `\n--- [Docs for ${lib}] ---\n${docs}\n`;
-          }
+        } catch (err: any) {
+          console.error(`Context7 fetch failed for method ${method}:`, err.message);
+          return null;
+        } finally {
+          clearTimeout(timeout);
         }
-      }
+      };
+
+      // Fetch documentation in parallel for performance
+      const docPromises = inferredTechnologies.map(async (lib) => {
+        try {
+          const resolveData: any = await callMCP("resolve-library-id", { 
+            libraryName: lib, 
+            query: refinedPrompt 
+          });
+          
+          const resolveText = resolveData?.result?.content?.[0]?.text || "";
+          const idMatch = resolveText.match(/library ID: (\/[^\s\n]+)/);
+          const libraryId = idMatch ? idMatch[1] : null;
+
+          if (libraryId) {
+            const queryData: any = await callMCP("query-docs", { libraryId, query: refinedPrompt });
+            const docs = queryData?.result?.content?.[0]?.text;
+            if (docs && !docs.includes("MCP error")) {
+              return `\n--- [Docs for ${lib}] ---\n${docs}\n`;
+            }
+          }
+        } catch (err: any) {
+          console.error(`Error processing docs for ${lib}:`, err.message);
+        }
+        return "";
+      });
+
+      const results = await Promise.allSettled(docPromises);
+      let allDocs = results
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+        .map(r => r.value)
+        .join("");
       
       if (allDocs) {
         contextExtra += "\n<external_documentation>\n" + allDocs + "\n</external_documentation>";
@@ -502,8 +575,20 @@ async function main() {
     });
   } else {
     const transport = new StdioServerTransport();
+    
+    // Explicitly handle transport errors
+    transport.onerror = (error) => {
+      console.error("Transport error:", error);
+    };
+    transport.onclose = () => {
+      console.error("Transport closed.");
+    };
+
     await server.connect(transport);
     console.error("OpenCode MCP Server (Stdio) running");
+
+    // Keep the process alive explicitly
+    setInterval(() => {}, 1000 * 60 * 60); // 1 hour dummy interval
   }
 }
 
