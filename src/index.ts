@@ -10,6 +10,7 @@ import ollama from "ollama";
 import * as lancedb from "@lancedb/lancedb";
 import path from "path";
 import fs from "fs";
+import { LRUCache } from "lru-cache";
 
 /**
  * Global Error Handling to prevent EOF crashes
@@ -55,8 +56,16 @@ const EMBEDDING_MODEL = "nomic-embed-text";
 // Dynamic Configuration State
 let dynamicConfig = {
   enableContext7: process.env.ENABLE_CONTEXT7 !== "false",
-  context7ApiKey: process.env.CONTEXT7_API_KEY || ""
+  context7ApiKey: process.env.CONTEXT7_API_KEY || "",
+  useHybrid: process.env.USE_HYBRID === undefined || process.env.USE_HYBRID !== "false",
+  localConfidenceThreshold: parseFloat(process.env.LOCAL_CONFIDENCE_THRESHOLD || "0.7")
 };
+
+// Context7 response cache (5 min default)
+const context7Cache = new LRUCache<string, string>({
+  max: 500,
+  ttl: 1000 * 60 * 5,
+});
 
 
 /**
@@ -231,6 +240,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "Optional. The Context7 API Key.",
             },
+            useHybrid: {
+              type: "boolean",
+              description: "Optional. Set to true to enable hybrid mode (local first).",
+            },
+            threshold: {
+              type: "number",
+              description: "Optional. Set the confidence threshold for local hits (0-1).",
+            },
           },
           required: ["enable"],
         },
@@ -279,13 +296,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (name === "configure_context7") {
     const enable = args?.enable as boolean;
     const apiKey = args?.apiKey as string;
+    const useHybrid = args?.useHybrid as boolean;
+    const threshold = args?.threshold as number;
 
     dynamicConfig.enableContext7 = enable;
-    if (apiKey) {
-      dynamicConfig.context7ApiKey = apiKey;
-    }
+    if (apiKey) dynamicConfig.context7ApiKey = apiKey;
+    if (useHybrid !== undefined) dynamicConfig.useHybrid = useHybrid;
+    if (threshold !== undefined) dynamicConfig.localConfidenceThreshold = threshold;
 
-    const statusMsg = `Context7 configuration updated successfully.\nStatus: ${enable ? 'ENABLED' : 'DISABLED'}\nAPI Key: ${dynamicConfig.context7ApiKey ? 'Set' : 'Not Set'}`;
+    const statusMsg = `Context7 configuration updated successfully.\n` +
+      `Status: ${enable ? 'ENABLED' : 'DISABLED'}\n` +
+      `Hybrid Mode: ${dynamicConfig.useHybrid ? 'ENABLED' : 'DISABLED'}\n` +
+      `Threshold: ${dynamicConfig.localConfidenceThreshold}\n` +
+      `API Key: ${dynamicConfig.context7ApiKey ? 'Set' : 'Not Set'}`;
     console.error(statusMsg);
 
     return {
@@ -332,6 +355,7 @@ User Prompt: "${originalPrompt}"`,
     }
 
     // Step 2: Try to search for relevant local memories
+    let isLocalHit = false;
     if (table) {
       try {
         const queryVector = await getEmbedding(refinedPrompt);
@@ -341,9 +365,20 @@ User Prompt: "${originalPrompt}"`,
           query = query.filter(`category = '${categoryFilter}'`);
         }
         
+        // LanceDB returns results with _distance. 0 is perfect match, higher is less similar.
+        // We approximate confidence as 1 - distance (normalized or clamped).
         const results = await query.limit(2).toArray();
         
         if (results.length > 0) {
+          const topResult = results[0];
+          // Heuristic: distance < 0.3 is usually a very strong hit
+          const confidence = topResult._distance !== undefined ? Math.max(0, 1 - topResult._distance) : 1;
+          
+          if (dynamicConfig.useHybrid && confidence >= dynamicConfig.localConfidenceThreshold) {
+            isLocalHit = true;
+            console.error(`Local Hybrid Hit (Confidence: ${confidence.toFixed(2)}). Skipping Context7.`);
+          }
+
           contextExtra += "\n<semantic_memory>\n" + 
             results.map((r: any) => `<context_item category="${r.category}">\n${r.text}\n</context_item>`).join("\n") +
             "\n</semantic_memory>";
@@ -356,8 +391,16 @@ User Prompt: "${originalPrompt}"`,
     }
 
     // Step 3: Context7 Documentation Integration
-    if (dynamicConfig.enableContext7 && inferredTechnologies.length > 0) {
-      console.error(`Context7: Fetching docs for ${inferredTechnologies.join(", ")}`);
+    // Only run if Context7 is enabled AND it's NOT a local hybrid hit AND we have tech to search for
+    if (dynamicConfig.enableContext7 && !isLocalHit && inferredTechnologies.length > 0) {
+      const cacheKey = `c7:${inferredTechnologies.sort().join(",")}:${refinedPrompt}`;
+      const cachedDocs = context7Cache.get(cacheKey);
+
+      if (cachedDocs) {
+        console.error("Context7: Cache Hit. Using cached documentation.");
+        contextExtra += "\n<external_documentation>\n" + cachedDocs + "\n</external_documentation>";
+      } else {
+        console.error(`Context7: Fetching docs for ${inferredTechnologies.join(", ")}`);
       
       const callMCP = async (method: string, callArgs: any) => {
         const controller = new AbortController();
@@ -460,10 +503,12 @@ User Prompt: "${originalPrompt}"`,
         .join("");
       
       if (allDocs) {
+        context7Cache.set(cacheKey, allDocs);
         contextExtra += "\n<external_documentation>\n" + allDocs + "\n</external_documentation>";
         console.error("Injected external documentation from Context7.");
       }
     }
+  }
 
     // Step 4: Return the SUPER PROMPT to Antigravity
     return {

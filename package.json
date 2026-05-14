@@ -17,6 +17,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/express": "^5.0.6",
     "express": "^5.2.1",
+    "lru-cache": "^11.3.6",
     "ollama": "^0.6.3"
   },
   "devDependencies": {
